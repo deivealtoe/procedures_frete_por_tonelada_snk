@@ -1,0 +1,133 @@
+CREATE PROCEDURE [sankhya].[DAL_STP_DISTRIBFRETEITENS_PESO] (@P_NUNOTA INTEGER, @P_VLRFRETE NUMERIC(10, 2), @P_VLRDESCFRETE NUMERIC(10, 2), @P_DTENTREGA DATETIME)
+AS
+BEGIN
+	----------------------------------------------------------------------
+	-- Objetivo: Distribuir o valor do frete entre seus itens
+	----------------------------------------------------------------------
+	DECLARE
+		@SEQUENCIA		    INT,
+		@VLRFRETEITE	    NUMERIC(10, 2),
+		@VLRDESCFRETE   	NUMERIC(10, 2),
+		@VLRFRETETOT	    NUMERIC(10, 2),
+		@VLRDESCFRETETOT	NUMERIC(10, 2),
+		@VLRDIF			    NUMERIC(10, 2),
+		@VLRDIFDESC		    NUMERIC(10, 2)
+
+	 -- Zera o valor de frete dos itens que não são de entrega
+	UPDATE
+		TGFITE
+	SET
+		AD_VLRFRETE = 0
+	WHERE
+		NUNOTA = @P_NUNOTA
+		AND AD_ENTREGA <> 'E';
+
+	-- Distribui o valor de frete da nota ponderadamente entre os itens de entrega
+	DECLARE cITE CURSOR
+	FOR
+	
+		SELECT
+			SEQUENCIA,
+			ROUND(ISNULL(@P_VLRFRETE, 0) * ((I.VLRTOT - I.VLRDESC) * 100 / (SELECT SUM(ITE.VLRTOT - ITE.VLRDESC) FROM TGFITE ITE (NOLOCK)
+										WHERE ITE.AD_ENTREGA = 'E'
+										  AND ITE.NUNOTA = I.NUNOTA AND ITE.AD_DTENTREGA = I.AD_DTENTREGA))
+							/ 100, 2),
+			ROUND(ISNULL(@P_VLRDESCFRETE, 0)
+							* ((I.VLRTOT - I.VLRDESC) * 100 
+									/ (SELECT SUM(ITE.VLRTOT - ITE.VLRDESC)
+					                     FROM TGFITE ITE (NOLOCK)
+										WHERE ITE.AD_ENTREGA = 'E'
+										  AND ITE.NUNOTA = I.NUNOTA AND ITE.AD_DTENTREGA = I.AD_DTENTREGA))
+							/ 100, 2)
+		FROM
+			TGFITE I (NOLOCK)
+		WHERE
+			I.AD_ENTREGA = 'E'
+		   	AND I.NUNOTA = @P_NUNOTA
+		   	AND I.AD_DTENTREGA = @P_DTENTREGA
+			AND ISNULL((
+				SELECT
+					SUM(ITE.VLRTOT - ITE.VLRDESC)
+				FROM
+					TGFITE ITE (NOLOCK)
+				WHERE
+					ITE.AD_ENTREGA = 'E'
+					AND ITE.NUNOTA = I.NUNOTA
+					AND ITE.AD_DTENTREGA = I.AD_DTENTREGA
+			), 0) <> 0;
+
+	OPEN cITE
+	FETCH NEXT FROM cITE INTO @SEQUENCIA, @VLRFRETEITE, @VLRDESCFRETE
+
+	WHILE @@FETCH_STATUS = 0
+	BEGIN
+		
+		UPDATE
+			TGFITE
+		SET
+			AD_VLRFRETE = ISNULL(@VLRFRETEITE, 0), --CASE WHEN ISNULL(@VLRFRETEITE, 0) > 0 THEN @VLRFRETEITE ELSE 0 END,
+			AD_VLRDESCFRETE	= ISNULL(@VLRDESCFRETE, 0) --CASE WHEN ISNULL(@VLRDESCFRETE, 0) > 0 THEN @VLRDESCFRETE ELSE 0 END
+		WHERE
+			NUNOTA = @P_NUNOTA
+		  	AND SEQUENCIA = @SEQUENCIA
+		  	AND (
+		  		ISNULL(AD_VLRFRETE, 0) <> ISNULL(@VLRFRETEITE, 0)
+				OR ISNULL(AD_VLRDESCFRETE, 0) <> ISNULL(@VLRDESCFRETE, 0)
+			);
+
+		FETCH NEXT FROM cITE INTO @SEQUENCIA, @VLRFRETEITE, @VLRDESCFRETE
+	END
+	CLOSE cITE
+	DEALLOCATE cITE
+
+	-- Soma o frete distribuido nos itens para verificar se tem diferença de valores
+	SELECT
+		@VLRFRETETOT = SUM(AD_VLRFRETE),
+       	@VLRDESCFRETETOT = SUM(AD_VLRDESCFRETE)
+  	FROM
+		TGFITE (NOLOCK)
+ 	WHERE
+		NUNOTA = @P_NUNOTA
+		AND AD_DTENTREGA = @P_DTENTREGA;
+
+	-- Calcula a diferença de valores
+	SET @VLRDIF = ROUND(ISNULL(@P_VLRFRETE, 0), 2) - ROUND(@VLRFRETETOT, 2)
+	SET @VLRDIFDESC = ROUND(ISNULL(@P_VLRDESCFRETE, 0), 2) - ROUND(@VLRDESCFRETETOT, 2)
+
+	-- Se a diferença for diferente de zero, soma a diferença no valor do frete do item
+	IF @VLRDIF <> 0
+	BEGIN
+		
+		UPDATE
+			TGFITE
+		SET
+			AD_VLRFRETE = CASE
+							WHEN ISNULL(AD_VLRFRETE, 0) + @VLRDIF > 0
+								THEN ISNULL(AD_VLRFRETE, 0) + @VLRDIF
+							ELSE 0
+						END
+		 WHERE
+			NUNOTA = @P_NUNOTA
+		   	AND SEQUENCIA = @SEQUENCIA;
+		   	
+	END
+
+	-- Se a diferença for diferente de zero, soma a diferença no valor do frete do item
+	IF @VLRDIFDESC <> 0
+	BEGIN
+		
+		UPDATE
+			TGFITE
+		SET
+			AD_VLRDESCFRETE = CASE
+								WHEN ISNULL(AD_VLRDESCFRETE, 0) + @VLRDIFDESC > 0
+									THEN ISNULL(AD_VLRDESCFRETE, 0) + @VLRDIFDESC
+								ELSE 0
+							END
+		 WHERE
+			NUNOTA = @P_NUNOTA
+		   	AND SEQUENCIA = @SEQUENCIA;
+		  	
+	END
+
+END
