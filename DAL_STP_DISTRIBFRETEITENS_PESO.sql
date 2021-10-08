@@ -8,12 +8,12 @@ BEGIN
 		@SEQUENCIA		    INT,
 		@VLRFRETEITE	    NUMERIC(10, 2),
 		@VLRDESCFRETE   	NUMERIC(10, 2),
-		@VLRFRETETOT	    NUMERIC(10, 2),
-		@VLRDESCFRETETOT	NUMERIC(10, 2),
+		@VLRFRETETOT        NUMERIC(10, 2),
+		@VLRDESCFRETETOT    NUMERIC(10, 2),
 		@VLRDIF			    NUMERIC(10, 2),
 		@VLRDIFDESC		    NUMERIC(10, 2)
 
-	 -- Zera o valor de frete dos itens que n„o s„o de entrega
+	 -- Zera o valor de frete dos itens que n√£o s√£o de entrega
 	UPDATE
 		TGFITE
 	SET
@@ -80,7 +80,7 @@ BEGIN
 	CLOSE cITE
 	DEALLOCATE cITE
 
-	-- Soma o frete distribuido nos itens para verificar se tem diferenÁa de valores
+	-- Soma o frete distribuido nos itens para verificar se tem diferen√ßa de valores
 	SELECT
 		@VLRFRETETOT = SUM(AD_VLRFRETE),
        	@VLRDESCFRETETOT = SUM(AD_VLRDESCFRETE)
@@ -90,11 +90,11 @@ BEGIN
 		NUNOTA = @P_NUNOTA
 		AND AD_DTENTREGA = @P_DTENTREGA;
 
-	-- Calcula a diferenÁa de valores
+	-- Calcula a diferen√ßa de valores
 	SET @VLRDIF = ROUND(ISNULL(@P_VLRFRETE, 0), 2) - ROUND(@VLRFRETETOT, 2)
 	SET @VLRDIFDESC = ROUND(ISNULL(@P_VLRDESCFRETE, 0), 2) - ROUND(@VLRDESCFRETETOT, 2)
 
-	-- Se a diferenÁa for diferente de zero, soma a diferenÁa no valor do frete do item
+	-- Se a diferen√ßa for diferente de zero, soma a diferen√ßa no valor do frete do item
 	IF @VLRDIF <> 0
 	BEGIN
 		
@@ -112,7 +112,7 @@ BEGIN
 		   	
 	END
 
-	-- Se a diferenÁa for diferente de zero, soma a diferenÁa no valor do frete do item
+	-- Se a diferen√ßa for diferente de zero, soma a diferen√ßa no valor do frete do item
 	IF @VLRDIFDESC <> 0
 	BEGIN
 		
@@ -130,4 +130,4 @@ BEGIN
 		  	
 	END
 
-END
+END;
