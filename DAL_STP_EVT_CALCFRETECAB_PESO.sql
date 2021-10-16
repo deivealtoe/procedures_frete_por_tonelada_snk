@@ -1,7 +1,7 @@
 CREATE PROCEDURE [sankhya].[DAL_STP_EVT_CALCFRETECAB_PESO] (
        @P_TIPOEVENTO INTEGER,    -- Identifica o tipo de evento
-       @P_IDSESSAO VARCHAR(MAX), -- Identificador da execuÁ„o. Serve para buscar informaÁıes dos campos da execuÁ„o.
-       @P_CODUSU INTEGER         -- CÛdigo do usu·rio logado
+       @P_IDSESSAO VARCHAR(MAX), -- Identificador da execu√ß√£o. Serve para buscar informa√ß√µes dos campos da execu√ß√£o.
+       @P_CODUSU INTEGER         -- C√≥digo do usu√°rio logado
 ) AS
 DECLARE
 	@BEFORE_INSERT   INTEGER,
@@ -78,259 +78,287 @@ BEGIN
 
 		IF @FRETEITE = 'C' AND @CODEMPCAB NOT IN (7, 9)
 		BEGIN 
-			SET @CODPARC = sankhya.EVP_GET_CAMPO_INT(@P_IDSESSAO, 'CODPARC') -- N„o mais usado
+			SET @CODPARC = sankhya.EVP_GET_CAMPO_INT(@P_IDSESSAO, 'CODPARC')
+			SET @CODREG = sankhya.EVP_GET_CAMPO_INT(@P_IDSESSAO, 'AD_CODREGENTREGA')
 
 			IF @STATUSNOTA <> 'L'
 			BEGIN
-				-- Verifica quantas s„o as datas de entrega / verifica se h· itens para entrega
-				SELECT
-					@COUNT = COUNT(1)
-				FROM
-					(
-						SELECT
-							DISTINCT
-							ISNULL(AD_DTENTREGA, GETDATE()) AS DTENTREGA
-						FROM
-							TGFITE (NOLOCK)
-						WHERE
-							ISNULL(AD_ENTREGA, 'N') = 'E'
-						   	AND NUNOTA = @NUNOTA
-				) AS I;
-
-			
-				IF @COUNT > 0
+				IF ISNULL(@CODREG, 0) = 0
 				BEGIN
-					EXEC sankhya.EVP_SET_CAMPO_TEXTO @P_IDSESSAO, 'TIPFRETE', 'S'
-					EXEC sankhya.EVP_SET_CAMPO_TEXTO @P_IDSESSAO, 'CIF_FOB', 'F'
-					
-					SET @CODPARCTRANSP = sankhya.EVP_GET_CAMPO_INT(@P_IDSESSAO, 'CODPARCTRANSP')
-					SET @CODEMPNEGOC = sankhya.EVP_GET_CAMPO_INT(@P_IDSESSAO, 'CODEMPNEGOC')
-					SET @CODPARCTRANSP = CASE
-											WHEN @CODPARCTRANSP = 0 THEN ISNULL((
-												SELECT
-													E.AD_CODPARCTRANSP
-												FROM
-													TGFEMP (nolock) E
-												WHERE
-													E.CODEMP = @CODEMPNEGOC
-											), 0)
-											ELSE @CODPARCTRANSP
-										END
-					
-					
-					EXEC sankhya.EVP_SET_CAMPO_INT @P_IDSESSAO, 'CODPARCTRANSP', @CODPARCTRANSP
-					
-					
-					SELECT
-						@VLRFRETE = SUM(U.VLRFRETECALC)
-					FROM
-						(
-							SELECT
-								T.NROUNICO,
-								T.DTENTREGA,
-								SUM(T.PESOBRUTOCALC) AS PESOTOTALITENS,
-								CASE
-									WHEN SUM(T.PESOBRUTOCALC) <= 1000 THEN 60
-									WHEN SUM(T.PESOBRUTOCALC) > 1000 THEN ((SUM(T.PESOBRUTOCALC) - 1000) * 0.08) + 60
-								END AS VLRFRETECALC
-							FROM
-								(
-									SELECT
-										CAB.NUNOTA AS NROUNICO,
-										ITE.SEQUENCIA AS SEQUENCIA,
-										ITE.CODPROD AS CODPROD,
-										ITE.QTDNEG AS QTDNEG,
-										ITE.CODVOL,
-										ITE.AD_ENTREGA AS ENTREGA,
-										PRO.PESOBRUTO AS PESOBRUTO,
-										PRO.PESOLIQ AS CADASTROPESO,
-										ROUND(PRO.PESOBRUTO * ITE.QTDNEG, 2) AS PESOBRUTOCALC,
-										ROUND(PRO.PESOLIQ * ITE.QTDNEG, 2) AS PESOLIQCALC,
-										CAB.PESO AS PESOTOTALCAB,
-										ITE.AD_DTENTREGA AS DTENTREGA
-									FROM
-										TGFCAB CAB
-									INNER JOIN TGFITE ITE ON
-										ITE.NUNOTA = CAB.NUNOTA
-									INNER JOIN TGFPRO PRO ON
-										PRO.CODPROD = ITE.CODPROD
-									WHERE
-										CAB.NUNOTA = @NUNOTA
-								) AS T
-							GROUP BY
-								T.NROUNICO,
-								T.DTENTREGA
-						) AS U
-					GROUP BY
-						U.NROUNICO;
-					
-					
-					EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'VLRFRETECALC', @VLRFRETE
-					
-					SET @VLRDESCFRETE = sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'AD_VLRDESCFRETE')
-					SET @VLRACRESCFRETE = sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'AD_VLRACRESCFRETE')
-					SET @VLRFRETE = ROUND(ISNULL(@VLRFRETE, 0) - ISNULL(@VLRDESCFRETE, 0) + ISNULL(@VLRACRESCFRETE, 0), 2)
-					
-					
-					IF @VLRFRETE <= 0
-						SET @VLRFRETE = 0
-					
-					EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'VLRFRETE', @VLRFRETE
-					
-					
-					SELECT
-						@VLRTOTITENS = SUM(ROUND(I.VLRTOT - I.VLRDESC + I.VLRSUBST + I.VLRIPI, 2))
-					FROM
-						TGFITE I (NOLOCK)
-					WHERE
-						I.NUNOTA = @NUNOTA;
-
-					
-					SET @VLRDESTAQUE = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRDESTAQUE'), 0)
-					SET @VLREMB = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLREMB'), 0)
-					SET @VLRVENDOR = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRVENDOR'), 0)
-
-					SET @VLRDESC = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRDESCTOT'), 0)
-
-					SET @VLRNOTA = @VLRTOTITENS - ISNULL(@VLRDESC, 0) + @VLRFRETE + @VLRDESTAQUE + @VLREMB + @VLRVENDOR
-					
-					
-					EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'VLRNOTA', @VLRNOTA
-
-					
-					SET @VLRFRETEORIG = sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRFRETE')
-					SET @TIPFRETEORIG = sankhya.EVP_GET_CAMPO_TEXTO(@P_IDSESSAO, 'TIPFRETE')
-					SET @CIF_FOBORIG  = sankhya.EVP_GET_CAMPO_TEXTO(@P_IDSESSAO, 'CIF_FOB')
-					SET @CODPARCTRANSPORIG = sankhya.EVP_GET_CAMPO_INT(@P_IDSESSAO, 'CODPARCTRANSP')
-
-					
-					EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'AD_VLRFRETE', @VLRFRETEORIG
-					EXEC sankhya.EVP_SET_CAMPO_TEXTO @P_IDSESSAO, 'AD_TIPFRETE', @TIPFRETEORIG
-					EXEC sankhya.EVP_SET_CAMPO_TEXTO @P_IDSESSAO, 'AD_CIF_FOB', @CIF_FOBORIG
-					EXEC sankhya.EVP_SET_CAMPO_INT @P_IDSESSAO, 'AD_CODPARCTRANSP', @CODPARCTRANSPORIG
-					
-					
-					-- Calcular o valor do frete total para cada data de entrega e atualiza a tgfite
-					DECLARE cur_VLR_DATAS_DE_ENTREGA CURSOR
-					FOR
-						SELECT
-							T.NROUNICO,
-							CASE
-								WHEN SUM(T.PESOBRUTOCALC) <= 1000 THEN 60
-								WHEN SUM(T.PESOBRUTOCALC) > 1000 THEN ((SUM(T.PESOBRUTOCALC) - 1000) * 0.08) + 60
-							END AS VLRFRETECALC,
-							/* Desconto do frete tambÈm precisa ser distribuÌdo entre os produtos
-							 * Dessa forma, o total do desconto dado È dividido pela quantidade de datas de entrega diferentes
-							 * E posteriormente dividido entre os itens de cada uma das datas*/
-							ROUND(@AD_VLRDESCFRETE / @COUNT, 2) AS VLRDESCFRETE,
-							T.DTENTREGA
-						FROM
-							(
-								SELECT
-									CAB.NUNOTA AS NROUNICO,
-									ITE.SEQUENCIA AS SEQUENCIA,
-									ITE.CODPROD AS CODPROD,
-									ITE.QTDNEG AS QTDNEG,
-									ITE.CODVOL,
-									ITE.AD_ENTREGA AS ENTREGA,
-									PRO.PESOBRUTO AS PESOBRUTO,
-									PRO.PESOLIQ AS CADASTROPESO,
-									ROUND(PRO.PESOBRUTO * ITE.QTDNEG, 2) AS PESOBRUTOCALC,
-									ROUND(PRO.PESOLIQ * ITE.QTDNEG, 2) AS PESOLIQCALC,
-									CAB.PESO AS PESOTOTALCAB,
-									ITE.AD_DTENTREGA AS DTENTREGA
-								FROM
-									TGFCAB CAB
-								INNER JOIN TGFITE ITE ON
-									ITE.NUNOTA = CAB.NUNOTA
-								INNER JOIN TGFPRO PRO ON
-									PRO.CODPROD = ITE.CODPROD
-								WHERE
-									CAB.NUNOTA = @NUNOTA
-							) AS T
-						GROUP BY
-							T.NROUNICO,
-							T.DTENTREGA;
-					
-					OPEN cur_VLR_DATAS_DE_ENTREGA
-					FETCH NEXT FROM cur_VLR_DATAS_DE_ENTREGA INTO @NUNOTA, @P_VLRFRETE, @P_VLRDESCFRETE, @P_DTENTREGA
-					
-					WHILE @@FETCH_STATUS = 0
-					BEGIN
-						EXEC sankhya.DAL_STP_DISTRIBFRETEITENS_PESO @NUNOTA, @P_VLRFRETE, @P_VLRDESCFRETE, @P_DTENTREGA
-
-						FETCH NEXT FROM cur_VLR_DATAS_DE_ENTREGA INTO @NUNOTA, @P_VLRFRETE, @P_VLRDESCFRETE, @P_DTENTREGA
-					END
-					CLOSE cur_VLR_DATAS_DE_ENTREGA
-					DEALLOCATE cur_VLR_DATAS_DE_ENTREGA
-					
-					
-					-- Se o valor do frete atual È maior que o frete calculado, mantem o valor do frete atual
-					SET @VLRFRETEATUAL = sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRFRETE')
-					EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'VLRFRETE', @VLRFRETE
-
-					
-					SELECT
-						@VLRTOTITENS = SUM(ROUND(I.VLRTOT - I.VLRDESC + I.VLRSUBST + I.VLRIPI, 2))
-					FROM
-						TGFITE I (NOLOCK)
-				 	WHERE
-						I.NUNOTA = @NUNOTA;
-					
-					
-					SET @VLRDESTAQUE = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRDESTAQUE'),0)
-					SET @VLREMB = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLREMB'),0)
-					SET @VLRVENDOR = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRVENDOR'),0)
-
-					
-					SET @VLRDESC = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRDESCTOT'),0)
-
-					
-					SET @VLRNOTA = @VLRTOTITENS - ISNULL(@VLRDESC,0) + @VLRFRETE + @VLRDESTAQUE + @VLREMB + @VLRVENDOR
-					
-					
-					EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'VLRNOTA', @VLRNOTA
-
-					
-					SET @VLRFRETEORIG = sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRFRETE')
-					SET @TIPFRETEORIG = sankhya.EVP_GET_CAMPO_TEXTO(@P_IDSESSAO, 'TIPFRETE')
-					SET @CIF_FOBORIG  = sankhya.EVP_GET_CAMPO_TEXTO(@P_IDSESSAO, 'CIF_FOB')
-					SET @CODPARCTRANSPORIG = sankhya.EVP_GET_CAMPO_INT(@P_IDSESSAO, 'CODPARCTRANSP')
-					
-					
-					EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'AD_VLRFRETE', @VLRFRETEORIG
-					EXEC sankhya.EVP_SET_CAMPO_TEXTO @P_IDSESSAO, 'AD_TIPFRETE', @TIPFRETEORIG
-					EXEC sankhya.EVP_SET_CAMPO_TEXTO @P_IDSESSAO, 'AD_CIF_FOB', @CIF_FOBORIG
-					EXEC sankhya.EVP_SET_CAMPO_INT @P_IDSESSAO, 'AD_CODPARCTRANSP', @CODPARCTRANSPORIG
-					
+					SET @MENSAGEM = 'Regi√£o n√£o definida para o endere√ßo de entrega. Cadastre uma regi√£o na cidade de entrega, para efetuar o calculo de frete.'
+					--EXEC SANKHYA.SNK_ERROR @MENSAGEM
 				END
 				ELSE
 				BEGIN
-					EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'VLRFRETE', 0
-					EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'VLRFRETECALC', 0
-					EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'AD_VLRDESCFRETE', 0
-					EXEC sankhya.EVP_SET_CAMPO_TEXTO @P_IDSESSAO, 'TIPFRETE', 'N'
-					EXEC sankhya.EVP_SET_CAMPO_TEXTO @P_IDSESSAO, 'CIF_FOB', 'S'
-					EXEC sankhya.EVP_SET_CAMPO_INT @P_IDSESSAO, 'CODPARCTRANSP', 0
+					-- Verifica quantas s√£o as datas de entrega / verifica se h√° itens para entrega
+					SELECT
+						@COUNT = COUNT(1)
+					FROM
+						(
+							SELECT
+								DISTINCT
+								ISNULL(AD_DTENTREGA, GETDATE()) AS DTENTREGA
+							FROM
+								TGFITE (NOLOCK)
+							WHERE
+								ISNULL(AD_ENTREGA, 'N') = 'E'
+							   	AND NUNOTA = @NUNOTA
+						) AS I;
 					
-					SET @VLRFRETEORIG = sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRFRETE')
-					SET @TIPFRETEORIG = sankhya.EVP_GET_CAMPO_TEXTO(@P_IDSESSAO, 'TIPFRETE')
-					SET @CIF_FOBORIG  = sankhya.EVP_GET_CAMPO_TEXTO(@P_IDSESSAO, 'CIF_FOB')
-					SET @CODPARCTRANSPORIG = sankhya.EVP_GET_CAMPO_INT(@P_IDSESSAO, 'CODPARCTRANSP')
 					
-					EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'AD_VLRFRETE', @VLRFRETEORIG
-					EXEC sankhya.EVP_SET_CAMPO_TEXTO @P_IDSESSAO, 'AD_TIPFRETE', @TIPFRETEORIG
-					EXEC sankhya.EVP_SET_CAMPO_TEXTO @P_IDSESSAO, 'AD_CIF_FOB', @CIF_FOBORIG
-					EXEC sankhya.EVP_SET_CAMPO_INT @P_IDSESSAO, 'AD_CODPARCTRANSP', @CODPARCTRANSPORIG
+					IF @COUNT > 0
+					BEGIN
+						-- Verifica o valor do frete da regi√£o de entrega
+						SELECT
+							@VLRFRETE = AD_VLRFRETE
+						FROM
+							TSIREG (NOLOCK)
+						WHERE
+							CODREG = @CODREG;
+						
+						
+						IF @VLRFRETE IS NULL
+						BEGIN
+							SET @MENSAGEM = 'Valor do frete n√£o definido para a regi√£o (' + CAST(@CODREG AS VARCHAR(15))+ '). Solicite o cadastro do frete para essa regi√£o'
+							EXEC SANKHYA.SNK_ERROR @MENSAGEM
+						END
+						ELSE
+						BEGIN
+							EXEC sankhya.EVP_SET_CAMPO_TEXTO @P_IDSESSAO, 'TIPFRETE', 'S'
+							EXEC sankhya.EVP_SET_CAMPO_TEXTO @P_IDSESSAO, 'CIF_FOB', 'F'
+							
+							SET @CODPARCTRANSP = sankhya.EVP_GET_CAMPO_INT(@P_IDSESSAO, 'CODPARCTRANSP')
+							SET @CODEMPNEGOC = sankhya.EVP_GET_CAMPO_INT(@P_IDSESSAO, 'CODEMPNEGOC')
+							SET @CODPARCTRANSP = CASE
+													WHEN @CODPARCTRANSP = 0 THEN ISNULL((
+														SELECT
+															E.AD_CODPARCTRANSP
+														FROM
+															TGFEMP (nolock) E
+														WHERE
+															E.CODEMP = @CODEMPNEGOC
+													), 0)
+													ELSE @CODPARCTRANSP
+												END
+							
+												
+							EXEC sankhya.EVP_SET_CAMPO_INT @P_IDSESSAO, 'CODPARCTRANSP', @CODPARCTRANSP
+							
+							
+							SELECT
+								@VLRFRETE = SUM(U.VLRFRETECALC)
+							FROM
+								(
+									SELECT
+										T.NROUNICO,
+										T.DTENTREGA,
+										SUM(T.PESOBRUTOCALC) AS PESOTOTALITENS,
+										CASE
+											WHEN SUM(T.PESOBRUTOCALC) <= 1000 THEN @VLRFRETE
+											WHEN SUM(T.PESOBRUTOCALC) > 1000 THEN ((SUM(T.PESOBRUTOCALC) - 1000) * 0.08) + @VLRFRETE
+										END AS VLRFRETECALC
+									FROM
+										(
+											SELECT
+												CAB.NUNOTA AS NROUNICO,
+												ITE.SEQUENCIA AS SEQUENCIA,
+												ITE.CODPROD AS CODPROD,
+												ITE.QTDNEG AS QTDNEG,
+												ITE.CODVOL,
+												ITE.AD_ENTREGA AS ENTREGA,
+												PRO.PESOBRUTO AS PESOBRUTO,
+												PRO.PESOLIQ AS CADASTROPESO,
+												ROUND(PRO.PESOBRUTO * ITE.QTDNEG, 2) AS PESOBRUTOCALC,
+												ROUND(PRO.PESOLIQ * ITE.QTDNEG, 2) AS PESOLIQCALC,
+												CAB.PESO AS PESOTOTALCAB,
+												ITE.AD_DTENTREGA AS DTENTREGA
+											FROM
+												TGFCAB CAB
+											INNER JOIN TGFITE ITE ON
+												ITE.NUNOTA = CAB.NUNOTA
+											INNER JOIN TGFPRO PRO ON
+												PRO.CODPROD = ITE.CODPROD
+											WHERE
+												CAB.NUNOTA = @NUNOTA
+										) AS T
+									GROUP BY
+										T.NROUNICO,
+										T.DTENTREGA
+								) AS U
+							GROUP BY
+								U.NROUNICO;
+							
+							
+							EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'VLRFRETECALC', @VLRFRETE
+							
+							
+							SET @VLRDESCFRETE = sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'AD_VLRDESCFRETE')
+							SET @VLRACRESCFRETE = sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'AD_VLRACRESCFRETE')
+							SET @VLRFRETE = ROUND(ISNULL(@VLRFRETE, 0) - ISNULL(@VLRDESCFRETE, 0) + ISNULL(@VLRACRESCFRETE, 0), 2)
+							
+							
+							IF @VLRFRETE <= 0
+								SET @VLRFRETE = 0
+							
+							EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'VLRFRETE', @VLRFRETE
+							
+							
+							SELECT
+								@VLRTOTITENS = SUM(ROUND(I.VLRTOT - I.VLRDESC + I.VLRSUBST + I.VLRIPI, 2))
+							FROM
+								TGFITE I (NOLOCK)
+							WHERE
+								I.NUNOTA = @NUNOTA;
 		
-					UPDATE
-						TGFITE
-					SET
-						AD_VLRFRETE = 0,
-						AD_VLRDESCFRETE = 0
-					WHERE
-						NUNOTA = @NUNOTA
-					   	AND ISNULL(AD_ENTREGA, 'N') <> 'E';
+							
+							SET @VLRDESTAQUE = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRDESTAQUE'), 0)
+							SET @VLREMB = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLREMB'), 0)
+							SET @VLRVENDOR = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRVENDOR'), 0)
+		
+							SET @VLRDESC = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRDESCTOT'), 0)
+		
+							SET @VLRNOTA = @VLRTOTITENS - ISNULL(@VLRDESC, 0) + @VLRFRETE + @VLRDESTAQUE + @VLREMB + @VLRVENDOR
+							
+							
+							EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'VLRNOTA', @VLRNOTA
+		
+							
+							SET @VLRFRETEORIG = sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRFRETE')
+							SET @TIPFRETEORIG = sankhya.EVP_GET_CAMPO_TEXTO(@P_IDSESSAO, 'TIPFRETE')
+							SET @CIF_FOBORIG  = sankhya.EVP_GET_CAMPO_TEXTO(@P_IDSESSAO, 'CIF_FOB')
+							SET @CODPARCTRANSPORIG = sankhya.EVP_GET_CAMPO_INT(@P_IDSESSAO, 'CODPARCTRANSP')
+		
+							
+							EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'AD_VLRFRETE', @VLRFRETEORIG
+							EXEC sankhya.EVP_SET_CAMPO_TEXTO @P_IDSESSAO, 'AD_TIPFRETE', @TIPFRETEORIG
+							EXEC sankhya.EVP_SET_CAMPO_TEXTO @P_IDSESSAO, 'AD_CIF_FOB', @CIF_FOBORIG
+							EXEC sankhya.EVP_SET_CAMPO_INT @P_IDSESSAO, 'AD_CODPARCTRANSP', @CODPARCTRANSPORIG
+							
+							
+							-- Calcular o valor do frete total para cada data de entrega e atualiza a tgfite
+							DECLARE cur_VLR_DATAS_DE_ENTREGA CURSOR
+							FOR
+								SELECT
+									T.NROUNICO,
+									CASE
+										WHEN SUM(T.PESOBRUTOCALC) <= 1000 THEN @VLRFRETE
+										WHEN SUM(T.PESOBRUTOCALC) > 1000 THEN ((SUM(T.PESOBRUTOCALC) - 1000) * 0.08) + @VLRFRETE
+									END AS VLRFRETECALC,
+									/* Desconto do frete tamb√©m precisa ser distribu√≠do entre os produtos
+									 * Dessa forma, o total do desconto dado √© dividido pela quantidade de datas de entrega diferentes
+									 * E posteriormente dividido entre os itens de cada uma das datas*/
+									ROUND(@AD_VLRDESCFRETE / @COUNT, 2) AS VLRDESCFRETE,
+									T.DTENTREGA
+								FROM
+									(
+										SELECT
+											CAB.NUNOTA AS NROUNICO,
+											ITE.SEQUENCIA AS SEQUENCIA,
+											ITE.CODPROD AS CODPROD,
+											ITE.QTDNEG AS QTDNEG,
+											ITE.CODVOL,
+											ITE.AD_ENTREGA AS ENTREGA,
+											PRO.PESOBRUTO AS PESOBRUTO,
+											PRO.PESOLIQ AS CADASTROPESO,
+											ROUND(PRO.PESOBRUTO * ITE.QTDNEG, 2) AS PESOBRUTOCALC,
+											ROUND(PRO.PESOLIQ * ITE.QTDNEG, 2) AS PESOLIQCALC,
+											CAB.PESO AS PESOTOTALCAB,
+											ITE.AD_DTENTREGA AS DTENTREGA
+										FROM
+											TGFCAB CAB
+										INNER JOIN TGFITE ITE ON
+											ITE.NUNOTA = CAB.NUNOTA
+										INNER JOIN TGFPRO PRO ON
+											PRO.CODPROD = ITE.CODPROD
+										WHERE
+											CAB.NUNOTA = @NUNOTA
+									) AS T
+								GROUP BY
+									T.NROUNICO,
+									T.DTENTREGA;
+							
+							OPEN cur_VLR_DATAS_DE_ENTREGA
+							FETCH NEXT FROM cur_VLR_DATAS_DE_ENTREGA INTO @NUNOTA, @P_VLRFRETE, @P_VLRDESCFRETE, @P_DTENTREGA
+							
+							WHILE @@FETCH_STATUS = 0
+							BEGIN
+								EXEC sankhya.DAL_STP_DISTRIBFRETEITENS_PESO @NUNOTA, @P_VLRFRETE, @P_VLRDESCFRETE, @P_DTENTREGA
+		
+								FETCH NEXT FROM cur_VLR_DATAS_DE_ENTREGA INTO @NUNOTA, @P_VLRFRETE, @P_VLRDESCFRETE, @P_DTENTREGA
+							END
+							CLOSE cur_VLR_DATAS_DE_ENTREGA
+							DEALLOCATE cur_VLR_DATAS_DE_ENTREGA
+							
+							
+							-- Se o valor do frete atual √© maior que o frete calculado, mantem o valor do frete atual
+							SET @VLRFRETEATUAL = sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRFRETE')
+							EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'VLRFRETE', @VLRFRETE
+		
+							
+							SELECT
+								@VLRTOTITENS = SUM(ROUND(I.VLRTOT - I.VLRDESC + I.VLRSUBST + I.VLRIPI, 2))
+							FROM
+								TGFITE I (NOLOCK)
+						 	WHERE
+								I.NUNOTA = @NUNOTA;
+							
+							
+							SET @VLRDESTAQUE = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRDESTAQUE'),0)
+							SET @VLREMB = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLREMB'),0)
+							SET @VLRVENDOR = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRVENDOR'),0)
+		
+							
+							SET @VLRDESC = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRDESCTOT'),0)
+		
+							
+							SET @VLRNOTA = @VLRTOTITENS - ISNULL(@VLRDESC,0) + @VLRFRETE + @VLRDESTAQUE + @VLREMB + @VLRVENDOR
+							
+							
+							EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'VLRNOTA', @VLRNOTA
+		
+							
+							SET @VLRFRETEORIG = sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRFRETE')
+							SET @TIPFRETEORIG = sankhya.EVP_GET_CAMPO_TEXTO(@P_IDSESSAO, 'TIPFRETE')
+							SET @CIF_FOBORIG  = sankhya.EVP_GET_CAMPO_TEXTO(@P_IDSESSAO, 'CIF_FOB')
+							SET @CODPARCTRANSPORIG = sankhya.EVP_GET_CAMPO_INT(@P_IDSESSAO, 'CODPARCTRANSP')
+							
+							
+							EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'AD_VLRFRETE', @VLRFRETEORIG
+							EXEC sankhya.EVP_SET_CAMPO_TEXTO @P_IDSESSAO, 'AD_TIPFRETE', @TIPFRETEORIG
+							EXEC sankhya.EVP_SET_CAMPO_TEXTO @P_IDSESSAO, 'AD_CIF_FOB', @CIF_FOBORIG
+							EXEC sankhya.EVP_SET_CAMPO_INT @P_IDSESSAO, 'AD_CODPARCTRANSP', @CODPARCTRANSPORIG
+							
+						END
+					END
+					ELSE
+					BEGIN
+						EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'VLRFRETE', 0
+						EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'VLRFRETECALC', 0
+						EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'AD_VLRDESCFRETE', 0
+						EXEC sankhya.EVP_SET_CAMPO_TEXTO @P_IDSESSAO, 'TIPFRETE', 'N'
+						EXEC sankhya.EVP_SET_CAMPO_TEXTO @P_IDSESSAO, 'CIF_FOB', 'S'
+						EXEC sankhya.EVP_SET_CAMPO_INT @P_IDSESSAO, 'CODPARCTRANSP', 0
+						
+						SET @VLRFRETEORIG = sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRFRETE')
+						SET @TIPFRETEORIG = sankhya.EVP_GET_CAMPO_TEXTO(@P_IDSESSAO, 'TIPFRETE')
+						SET @CIF_FOBORIG  = sankhya.EVP_GET_CAMPO_TEXTO(@P_IDSESSAO, 'CIF_FOB')
+						SET @CODPARCTRANSPORIG = sankhya.EVP_GET_CAMPO_INT(@P_IDSESSAO, 'CODPARCTRANSP')
+						
+						EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'AD_VLRFRETE', @VLRFRETEORIG
+						EXEC sankhya.EVP_SET_CAMPO_TEXTO @P_IDSESSAO, 'AD_TIPFRETE', @TIPFRETEORIG
+						EXEC sankhya.EVP_SET_CAMPO_TEXTO @P_IDSESSAO, 'AD_CIF_FOB', @CIF_FOBORIG
+						EXEC sankhya.EVP_SET_CAMPO_INT @P_IDSESSAO, 'AD_CODPARCTRANSP', @CODPARCTRANSPORIG
+			
+						UPDATE
+							TGFITE
+						SET
+							AD_VLRFRETE = 0,
+							AD_VLRDESCFRETE = 0
+						WHERE
+							NUNOTA = @NUNOTA
+						   	AND ISNULL(AD_ENTREGA, 'N') <> 'E';
+						   
+					END
 				END
 			END
 			ELSE
@@ -338,7 +366,7 @@ BEGIN
 				SET @CODREG = sankhya.EVP_GET_CAMPO_INT(@P_IDSESSAO, 'AD_CODREGENTREGA')
 				IF ISNULL(@CODREG,0) = 0
 				BEGIN
-					SET @MENSAGEM = 'Regi„o n„o definida para o endereÁo de entrega. Cadastre uma regi„o na cidade de entrega, para efetuar o calculo de frete.'
+					SET @MENSAGEM = 'Regi√£o n√£o definida para o endere√ßo de entrega. Cadastre uma regi√£o na cidade de entrega, para efetuar o calculo de frete.'
 					EXEC SANKHYA.SNK_ERROR @MENSAGEM
 				END
 
