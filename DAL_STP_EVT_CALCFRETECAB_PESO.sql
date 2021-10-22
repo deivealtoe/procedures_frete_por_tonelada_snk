@@ -18,6 +18,7 @@ DECLARE
 	@CODPARC		 INT,
 	@FRETEITE		 VARCHAR(10),
 	@VLRFRETE		 NUMERIC(10, 2),
+	@VLRFRETE_REG    NUMERIC(10, 2),
 	@VLRFRETEATUAL	 NUMERIC(10, 2),
 	@STATUSNOTA		 VARCHAR(1),
 	@CODREG			 INT,
@@ -41,12 +42,12 @@ DECLARE
 
 BEGIN
 	SET @BEFORE_INSERT = 0
-    SET @AFTER_INSERT  = 1
-    SET @BEFORE_DELETE = 2
-    SET @AFTER_DELETE  = 3
-    SET @BEFORE_UPDATE = 4
-    SET @AFTER_UPDATE  = 5
-    SET @BEFORE_COMMIT = 10
+    	SET @AFTER_INSERT  = 1
+    	SET @BEFORE_DELETE = 2
+    	SET @AFTER_DELETE  = 3
+    	SET @BEFORE_UPDATE = 4
+    	SET @AFTER_UPDATE  = 5
+	SET @BEFORE_COMMIT = 10
 	
 	-------------------------------------------------------------------------
 	-- Objetivo: Calcular o Frete do pedido de acordo com o peso dos itens do pedido
@@ -110,14 +111,14 @@ BEGIN
 					BEGIN
 						-- Verifica o valor do frete da região de entrega
 						SELECT
-							@VLRFRETE = AD_VLRFRETE
+							@VLRFRETE_REG = AD_VLRFRETE
 						FROM
 							TSIREG (NOLOCK)
 						WHERE
 							CODREG = @CODREG;
 						
 						
-						IF @VLRFRETE IS NULL
+						IF @VLRFRETE_REG IS NULL
 						BEGIN
 							SET @MENSAGEM = 'Valor do frete não definido para a região (' + CAST(@CODREG AS VARCHAR(15))+ '). Solicite o cadastro do frete para essa região'
 							EXEC SANKHYA.SNK_ERROR @MENSAGEM
@@ -154,8 +155,8 @@ BEGIN
 										T.DTENTREGA,
 										SUM(T.PESOBRUTOCALC) AS PESOTOTALITENS,
 										CASE
-											WHEN SUM(T.PESOBRUTOCALC) <= 1000 THEN @VLRFRETE
-											WHEN SUM(T.PESOBRUTOCALC) > 1000 THEN ((SUM(T.PESOBRUTOCALC) - 1000) * 0.08) + @VLRFRETE
+											WHEN SUM(T.PESOBRUTOCALC) <= 1000 THEN @VLRFRETE_REG
+											WHEN SUM(T.PESOBRUTOCALC) > 1000 THEN ((SUM(T.PESOBRUTOCALC) - 1000) * 0.08) + @VLRFRETE_REG
 										END AS VLRFRETECALC
 									FROM
 										(
@@ -180,6 +181,7 @@ BEGIN
 												PRO.CODPROD = ITE.CODPROD
 											WHERE
 												CAB.NUNOTA = @NUNOTA
+												AND ITE.AD_ENTREGA = 'E'
 										) AS T
 									GROUP BY
 										T.NROUNICO,
@@ -193,12 +195,13 @@ BEGIN
 							
 							
 							SET @VLRDESCFRETE = sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'AD_VLRDESCFRETE')
-							SET @VLRACRESCFRETE = sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'AD_VLRACRESCFRETE')
+							SET @VLRACRESCFRETE = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'AD_VLRACRESCFRETE'), 0)
 							SET @VLRFRETE = ROUND(ISNULL(@VLRFRETE, 0) - ISNULL(@VLRDESCFRETE, 0) + ISNULL(@VLRACRESCFRETE, 0), 2)
 							
 							
 							IF @VLRFRETE <= 0
 								SET @VLRFRETE = 0
+							
 							
 							EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'VLRFRETE', @VLRFRETE
 							
@@ -240,10 +243,12 @@ BEGIN
 							FOR
 								SELECT
 									T.NROUNICO,
-									CASE
-										WHEN SUM(T.PESOBRUTOCALC) <= 1000 THEN @VLRFRETE
-										WHEN SUM(T.PESOBRUTOCALC) > 1000 THEN ((SUM(T.PESOBRUTOCALC) - 1000) * 0.08) + @VLRFRETE
-									END AS VLRFRETECALC,
+									(
+										CASE
+											WHEN SUM(T.PESOBRUTOCALC) <= 1000 THEN @VLRFRETE_REG
+											WHEN SUM(T.PESOBRUTOCALC) > 1000 THEN ((SUM(T.PESOBRUTOCALC) - 1000) * 0.08) + @VLRFRETE_REG
+										END
+									) + ROUND(@VLRACRESCFRETE / @COUNT, 2) AS VLRFRETECALC,
 									/* Desconto do frete também precisa ser distribuído entre os produtos
 									 * Dessa forma, o total do desconto dado é dividido pela quantidade de datas de entrega diferentes
 									 * E posteriormente dividido entre os itens de cada uma das datas*/
@@ -272,6 +277,7 @@ BEGIN
 											PRO.CODPROD = ITE.CODPROD
 										WHERE
 											CAB.NUNOTA = @NUNOTA
+											AND ITE.AD_ENTREGA = 'E'
 									) AS T
 								GROUP BY
 									T.NROUNICO,
@@ -291,7 +297,7 @@ BEGIN
 							
 							
 							-- Se o valor do frete atual é maior que o frete calculado, mantem o valor do frete atual
-							SET @VLRFRETEATUAL = sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRFRETE')
+							--SET @VLRFRETEATUAL = sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRFRETE')
 							EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'VLRFRETE', @VLRFRETE
 		
 							
@@ -306,7 +312,7 @@ BEGIN
 							SET @VLRDESTAQUE = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRDESTAQUE'),0)
 							SET @VLREMB = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLREMB'),0)
 							SET @VLRVENDOR = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRVENDOR'),0)
-		
+							
 							
 							SET @VLRDESC = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRDESCTOT'),0)
 		
@@ -419,8 +425,8 @@ BEGIN
 				  FROM TGFITE I (NOLOCK)
 				 WHERE I.NUNOTA = @NUNOTA
 
-				SET @VLRDESCFRETE = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'AD_VLRDESCFRETE'),0)
-				SET @VLRFRETE = @VLRFRETE -- ISNULL(@VLRDESCFRETE,0)
+				--SET @VLRDESCFRETE = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'AD_VLRDESCFRETE'),0) -- não estava comentado
+				SET @VLRFRETE = @VLRFRETE - ISNULL(@VLRDESCFRETE, 0) -- @VLRDESCFRETE estava comentado
 				 
 				IF @VLRFRETE <= 0
 					SET @VLRFRETE = 0
