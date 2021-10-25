@@ -1,7 +1,7 @@
 CREATE PROCEDURE [sankhya].[DAL_STP_EVT_CALCFRETECAB_PESO] (
        @P_TIPOEVENTO INTEGER,    -- Identifica o tipo de evento
-       @P_IDSESSAO VARCHAR(MAX), -- Identificador da execu√ß√£o. Serve para buscar informa√ß√µes dos campos da execu√ß√£o.
-       @P_CODUSU INTEGER         -- C√≥digo do usu√°rio logado
+       @P_IDSESSAO VARCHAR(MAX), -- Identificador da execuÁ„o. Serve para buscar informaÁıes dos campos da execuÁ„o.
+       @P_CODUSU INTEGER         -- CÛdigo do usu·rio logado
 ) AS
 DECLARE
 	@BEFORE_INSERT   INTEGER,
@@ -42,12 +42,12 @@ DECLARE
 
 BEGIN
 	SET @BEFORE_INSERT = 0
-    	SET @AFTER_INSERT  = 1
-    	SET @BEFORE_DELETE = 2
-    	SET @AFTER_DELETE  = 3
-    	SET @BEFORE_UPDATE = 4
-    	SET @AFTER_UPDATE  = 5
-	SET @BEFORE_COMMIT = 10
+    SET @AFTER_INSERT  = 1
+    SET @BEFORE_DELETE = 2
+    SET @AFTER_DELETE  = 3
+    SET @BEFORE_UPDATE = 4
+    SET @AFTER_UPDATE  = 5
+    SET @BEFORE_COMMIT = 10
 	
 	-------------------------------------------------------------------------
 	-- Objetivo: Calcular o Frete do pedido de acordo com o peso dos itens do pedido
@@ -86,12 +86,12 @@ BEGIN
 			BEGIN
 				IF ISNULL(@CODREG, 0) = 0
 				BEGIN
-					SET @MENSAGEM = 'Regi√£o n√£o definida para o endere√ßo de entrega. Cadastre uma regi√£o na cidade de entrega, para efetuar o calculo de frete.'
+					SET @MENSAGEM = 'Regi„o n„o definida para o endereÁo de entrega. Cadastre uma regi„o na cidade de entrega, para efetuar o calculo de frete.'
 					--EXEC SANKHYA.SNK_ERROR @MENSAGEM
 				END
 				ELSE
 				BEGIN
-					-- Verifica quantas s√£o as datas de entrega / verifica se h√° itens para entrega
+					-- Verifica quantas s„o as datas de entrega / verifica se h· itens para entrega
 					SELECT
 						@COUNT = COUNT(1)
 					FROM
@@ -109,7 +109,7 @@ BEGIN
 					
 					IF @COUNT > 0
 					BEGIN
-						-- Verifica o valor do frete da regi√£o de entrega
+						-- Verifica o valor do frete da regi„o de entrega
 						SELECT
 							@VLRFRETE_REG = AD_VLRFRETE
 						FROM
@@ -120,7 +120,7 @@ BEGIN
 						
 						IF @VLRFRETE_REG IS NULL
 						BEGIN
-							SET @MENSAGEM = 'Valor do frete n√£o definido para a regi√£o (' + CAST(@CODREG AS VARCHAR(15))+ '). Solicite o cadastro do frete para essa regi√£o'
+							SET @MENSAGEM = 'Valor do frete n„o definido para a regi„o (' + CAST(@CODREG AS VARCHAR(15))+ '). Solicite o cadastro do frete para essa regi„o'
 							EXEC SANKHYA.SNK_ERROR @MENSAGEM
 						END
 						ELSE
@@ -249,8 +249,8 @@ BEGIN
 											WHEN SUM(T.PESOBRUTOCALC) > 1000 THEN ((SUM(T.PESOBRUTOCALC) - 1000) * 0.08) + @VLRFRETE_REG
 										END
 									) + ROUND(@VLRACRESCFRETE / @COUNT, 2) AS VLRFRETECALC,
-									/* Desconto do frete tamb√©m precisa ser distribu√≠do entre os produtos
-									 * Dessa forma, o total do desconto dado √© dividido pela quantidade de datas de entrega diferentes
+									/* Desconto do frete tambÈm precisa ser distribuÌdo entre os produtos
+									 * Dessa forma, o total do desconto dado È dividido pela quantidade de datas de entrega diferentes
 									 * E posteriormente dividido entre os itens de cada uma das datas*/
 									ROUND(@AD_VLRDESCFRETE / @COUNT, 2) AS VLRDESCFRETE,
 									T.DTENTREGA
@@ -296,7 +296,7 @@ BEGIN
 							DEALLOCATE cur_VLR_DATAS_DE_ENTREGA
 							
 							
-							-- Se o valor do frete atual √© maior que o frete calculado, mantem o valor do frete atual
+							-- Se o valor do frete atual È maior que o frete calculado, mantem o valor do frete atual
 							--SET @VLRFRETEATUAL = sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRFRETE')
 							EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'VLRFRETE', @VLRFRETE
 		
@@ -321,7 +321,7 @@ BEGIN
 							
 							
 							EXEC sankhya.EVP_SET_CAMPO_DEC @P_IDSESSAO, 'VLRNOTA', @VLRNOTA
-		
+							
 							
 							SET @VLRFRETEORIG = sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'VLRFRETE')
 							SET @TIPFRETEORIG = sankhya.EVP_GET_CAMPO_TEXTO(@P_IDSESSAO, 'TIPFRETE')
@@ -372,7 +372,7 @@ BEGIN
 				SET @CODREG = sankhya.EVP_GET_CAMPO_INT(@P_IDSESSAO, 'AD_CODREGENTREGA')
 				IF ISNULL(@CODREG,0) = 0
 				BEGIN
-					SET @MENSAGEM = 'Regi√£o n√£o definida para o endere√ßo de entrega. Cadastre uma regi√£o na cidade de entrega, para efetuar o calculo de frete.'
+					SET @MENSAGEM = 'Regi„o n„o definida para o endereÁo de entrega. Cadastre uma regi„o na cidade de entrega, para efetuar o calculo de frete.'
 					EXEC SANKHYA.SNK_ERROR @MENSAGEM
 				END
 
@@ -425,7 +425,7 @@ BEGIN
 				  FROM TGFITE I (NOLOCK)
 				 WHERE I.NUNOTA = @NUNOTA
 
-				--SET @VLRDESCFRETE = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'AD_VLRDESCFRETE'),0) -- n√£o estava comentado
+				--SET @VLRDESCFRETE = ISNULL(sankhya.EVP_GET_CAMPO_DEC(@P_IDSESSAO, 'AD_VLRDESCFRETE'),0) -- n„o estava comentado
 				SET @VLRFRETE = @VLRFRETE - ISNULL(@VLRDESCFRETE, 0) -- @VLRDESCFRETE estava comentado
 				 
 				IF @VLRFRETE <= 0
