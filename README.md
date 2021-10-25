@@ -11,3 +11,5 @@ Sendo os valores de forma que
   - Valor da taxa: R$0,08
   - Cálculo: ((peso total - 1000) * valor da taxa) + valor do frete da região
     - Colocando em prática: (1200 - 1000) * 0,08) + 60 
+
+Evento ativo a partir do dia 25/10/2021 no período da manhã
